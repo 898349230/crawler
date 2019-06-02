@@ -114,7 +114,7 @@ def compile_test():
     content2 = '2019-05-15 17:00'
     content3 = '2019-12-15 03:00'
     # 将 '\d{2}:\d{2}' 编译为正则表达式对象
-    pattern = re.compile('\d{2}:\d{2}')
+    pattern = re.compile('\d{2}:\d{2}', re.S)
     result1 = re.sub(pattern, '', content1)
     result2 = re.sub(pattern, '', content2)
     result3 = re.sub(pattern, '', content3)
