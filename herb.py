@@ -2,14 +2,18 @@
 import requests
 import json
 import xlwt
+import xlrd
 
-# excel 保存路径
-# excelPath = "‪C:\\Users\\89834\\Desktop\\1.xls"
-excelPath2 = "2.xls"
-# file = open(excelPath,'w')
+# excel 保存路径 要保存成‘xls’ 格式 不要保存 ‘xlsx’
+exportExcelPath = "C:\\Users\\89834\\Desktop\\herb2.xls"
+# 读取的 excel 地址
+sourceExcelPath = 'C:\\Users\\89834\\Desktop\\1.xlsx'
 
 # 要查询的 名称
-ingredient_name_list =('artemisinin','Betea-Cubebene')
+ingredient_name_list =('"1,8-Cineole"','Betea-Cubebene')
+
+
+''' 没用的变量 '''
 # 查询 ingredient 表头  MOL_id 是 Ingredient id
 ingredient_title = ('MOL_id','Molecule_name','Molecule_formula','Molecule_weight','OB_score','PubChem_id''CAS_id',)
 # 查询 ingredient url
@@ -23,14 +27,7 @@ related_display_url = 'http://www.symmap.org/related_components/'
 # Gene_id 是 target id
 related_display_target_title = ('Gene_id','Gene_symbol','Chromosome','Gene_name','Protein_name','Ensembl_id','UniProt_id')
 
-
-''' 没用的 '''
-# Gene_id 是 Target id
-targetTuple = ('Gene_id','Gene_symbol','Chromosome','Gene_name','Protein_name','Ensembl_id','UniProt_id')
-# data={"table_name":"Mol","key":"artemisinin"}
-targetUrl = 'http://www.symmap.org/browse/'
-
-# 获取 ingredient id 集合
+''' 获取 ingredient id 集合 '''
 def get_ingredient_id(url,ingredient,title='MOL_id'):
     data = {"table_name": "Mol", "key": ingredient}
     response = requests.post(url, data)
@@ -43,6 +40,11 @@ def get_ingredient_id(url,ingredient,title='MOL_id'):
         #         print(title, ' : ', dataArr[i][title])
         return ingredientIdList
 
+''' 
+根据 ingredient_id 获取相关数据
+display 筛选条件  Gene 是 Target
+table_name 可选值： 'Herb','TCM_symptom','MM_symptom','Gene','Disease'
+'''
 def get_relate_target(url, id, table_name='Gene'):
     data = {'rrid': id, 'table_name': table_name, 'filter': 0}
     response = requests.post(url, data)
@@ -51,33 +53,46 @@ def get_relate_target(url, id, table_name='Gene'):
         jsonStr = json.loads(text)
         dataArr = jsonStr['data']
         columns = jsonStr['columns']
-        dictAndList = {}
+        dataDict = {}
         field2title = {}
+        titleList = []
+        # 表头与返回数据key的对应关系
         for column in columns:
             field2title.setdefault(column['field'],column['title'])
+            titleList.append(column['title'])
         # print("dataArr ",dataArr)
         relateList = []
         for i,data in enumerate(dataArr):
             relateDict = {}
             for field in field2title:
                 # relateDict.update(title=dataArr[i][title])
-                relateDict.setdefault(field,dataArr[i][field])
+                relateDict.setdefault(field2title[field],dataArr[i][field])
                 # print(title, "->",dataArr[i][title], end='\t\t\t')
             relateList.append(relateDict)
-        dictAndList.setdefault('data',relateList)
-        dictAndList.setdefault('columns',field2title)
-        return dictAndList
+        dataDict.setdefault('data',relateList)
+        dataDict.setdefault('titleList',titleList)
+        return dataDict
 
-def export_excel(data):
+'''
+读取excel中第一列的内容
+'''
+def read_excel(sourceExcelPath):
+    workBook = xlrd.open_workbook(sourceExcelPath) # type:xlrd.Book
+    first_sheet = workBook.sheet_by_index(0)
+    valueList = first_sheet.col_values(0)
+    return valueList
+
+'''
+导出excel
+'''
+def export_excel(data, exportPath):
     workbook = xlwt.Workbook(encoding='utf-8')
     workSheet = workbook.add_sheet("ingredient") # type:xlwt.Worksheet
     # 颜色
     nameStyle = cellColourStyle(2)
     idStyle = cellColourStyle(3)
     titleStyle = cellColourStyle(22)
-
     rowNum = 0
-
     for ingredientName in data:
         workSheet.write(rowNum,0,ingredientName,nameStyle)
         rowNum = rowNum + 1
@@ -90,85 +105,40 @@ def export_excel(data):
             # 每个 relateIngredientId 对应的一组数据
             relateTargetDataDict = relateDict[relateIngredientId]
             # 表头
-            relateColumnDict = relateTargetDataDict['columns']
-            for i, field in enumerate(relateColumnDict):
-                workSheet.write(rowNum, i, relateColumnDict[field],titleStyle)
+            titleList = relateTargetDataDict['titleList']
+            for i,title in enumerate(titleList):
+                workSheet.write(rowNum, i, title, titleStyle)
             # 遍历每条数据
             relateTargetList = relateTargetDataDict['data']
             for relateTarget in relateTargetList:
                 rowNum = rowNum + 1
                 colNum = 0
-                for title in related_display_target_title:
+                for title in titleList:
                     workSheet.write(rowNum, colNum, relateTarget[title])
                     colNum = colNum + 1
             rowNum = rowNum + 1
-    workbook.save(excelPath2)
-    print('success')
 
-def get_relate_target2(url, id, table_name='Gene'):
-    data = {'rrid': id, 'table_name': table_name, 'filter': 0}
-    response = requests.post(url, data)
-    if response.status_code == 200:
-        text = response.text
-        jsonStr = json.loads(text)
-        dataArr = jsonStr['data']
-        # print("dataArr ",dataArr)
-        relateList = []
-        for i,data in enumerate(dataArr):
-            relateDict = {}
-            for title in related_display_target_title:
-                # relateDict.update(title=dataArr[i][title])
-                relateDict.setdefault(title,dataArr[i][title])
-                # print(title, "->",dataArr[i][title], end='\t\t\t')
-            relateList.append(relateDict)
-        return relateList
+    workbook.save(exportPath)
+    print('导出成功')
 
+''' 打印数据 测试用 '''
 def print_data(data):
     for ingredientName in data:
         print('ingredientName ',ingredientName)
         relateDict = data[ingredientName]
         for relateIngredientId in relateDict:
             print("relateIngredientId ", relateIngredientId)
-            relateTargetList = relateDict[relateIngredientId]
+            relateTargetDataDict = relateDict[relateIngredientId]
+            # 表头
+            titleList = relateTargetDataDict['titleList']
+            # 每条数据
+            relateTargetList = relateTargetDataDict['data']
             for relateTarget in relateTargetList:
-                for title in related_display_target_title:
+                for i,title in enumerate(titleList):
                     print(title,':', relateTarget[title],end='\t\t')
                 print('')
 
-def export_excel2(data):
-    workbook = xlwt.Workbook(encoding='utf-8')
-    workSheet = workbook.add_sheet("ingredient") # type:xlwt.Worksheet
-    # 颜色
-    nameStyle = cellColourStyle(2)
-    idStyle = cellColourStyle(3)
-    titleStyle = cellColourStyle(22)
-
-    rowNum = 0
-    for ingredientName in data:
-        workSheet.write(rowNum,0,ingredientName,nameStyle)
-        rowNum = rowNum + 1
-        # 成分名称对应的数据
-        relateDict = data[ingredientName]
-        # 一个成分对应多个 IngredientId
-        for relateIngredientId in relateDict:
-            workSheet.write(rowNum, 0, relateIngredientId,idStyle)
-            rowNum = rowNum + 1
-            # 每个 relateIngredientId 对应的一组数据
-            relateTargetList = relateDict[relateIngredientId]
-            # 表头
-            for i, title in enumerate(related_display_target_title):
-                workSheet.write(rowNum, i, title,titleStyle)
-            # 遍历每条数据
-            for relateTarget in relateTargetList:
-                rowNum = rowNum + 1
-                colNum = 0
-                for title in related_display_target_title:
-                    workSheet.write(rowNum, colNum, relateTarget[title])
-                    colNum = colNum + 1
-            rowNum = rowNum + 1
-    workbook.save(excelPath2)
-    print('success')
-
+''' excel背景色 '''
 def cellColourStyle(colourNum):
     pattern = xlwt.Pattern() # type: xlwt.Pattern
     pattern.pattern = xlwt.Pattern.SOLID_PATTERN
@@ -182,16 +152,25 @@ def cellColourStyle(colourNum):
 
 if __name__ == '__main__':
     name2dataDict = {}
+    # 读取 excel 内的名称
+    name_list = read_excel(sourceExcelPath)
+    # 手动填写名称
+    # name_list = ingredient_name_list
     # 遍历成分名称集合
-    for ingredientName in ingredient_name_list:
-        ingredientId2RelateData = {}
-        # 成分名称的id
-        ingredientIdList = get_ingredient_id(ingredient_url,ingredientName)
-        # 关联成分的靶点信息
-        for ingredientId in ingredientIdList:
-            if ingredientId:
-                dictAndList = get_relate_target(related_display_url,ingredientId)
-                ingredientId2RelateData.setdefault(ingredientId,dictAndList)
-        name2dataDict.setdefault(ingredientName,ingredientId2RelateData)
+    for ingredientName in name_list:
+        if ingredientName:
+            ingredientId2RelateData = {}
+            # 成分名称的id
+            ingredientIdList = get_ingredient_id(ingredient_url,ingredientName)
+            # 关联成分的靶点信息
+            for ingredientId in ingredientIdList:
+                if ingredientId:
+                    # get_relate_target 第三个参数可以修改 根据display 选项获取不同的数据，默认是 Target
+                    # display 筛选条件  Gene 是 Target
+                    # table_name ： 'Herb','TCM_symptom','MM_symptom','Gene','Disease'
+                    # dictAndList = get_relate_target(related_display_url,ingredientId,'TCM_symptom')
+                    dictAndList = get_relate_target(related_display_url,ingredientId)
+                    ingredientId2RelateData.setdefault(ingredientId,dictAndList)
+            name2dataDict.setdefault(ingredientName,ingredientId2RelateData)
     # print_data(name2dataDict)
-    export_excel(name2dataDict)
+    export_excel(name2dataDict, exportExcelPath)
