@@ -7,13 +7,11 @@ import xlrd
 # excel 保存路径 要保存成‘xls’ 格式 不要保存 ‘xlsx’
 exportExcelPath = "C:\\Users\\89834\\Desktop\\herb2.xls"
 # 读取的 excel 地址
-sourceExcelPath = 'C:\\Users\\89834\\Desktop\\1.xlsx'
+sourceExcelPath = 'C:\\Users\\89834\\Desktop\\成分.xlsx'
 
 # 要查询的 名称
 ingredient_name_list =('"1,8-Cineole"','Betea-Cubebene')
 
-
-''' 没用的变量 '''
 # 查询 ingredient 表头  MOL_id 是 Ingredient id
 ingredient_title = ('MOL_id','Molecule_name','Molecule_formula','Molecule_weight','OB_score','PubChem_id''CAS_id',)
 # 查询 ingredient url
@@ -162,15 +160,16 @@ if __name__ == '__main__':
             ingredientId2RelateData = {}
             # 成分名称的id
             ingredientIdList = get_ingredient_id(ingredient_url,ingredientName)
-            # 关联成分的靶点信息
-            for ingredientId in ingredientIdList:
-                if ingredientId:
-                    # get_relate_target 第三个参数可以修改 根据display 选项获取不同的数据，默认是 Target
-                    # display 筛选条件  Gene 是 Target
-                    # table_name ： 'Herb','TCM_symptom','MM_symptom','Gene','Disease'
-                    # dictAndList = get_relate_target(related_display_url,ingredientId,'TCM_symptom')
-                    dictAndList = get_relate_target(related_display_url,ingredientId)
-                    ingredientId2RelateData.setdefault(ingredientId,dictAndList)
+            if ingredientIdList:
+                # 关联成分的靶点信息
+                for ingredientId in ingredientIdList:
+                    if ingredientId:
+                        # get_relate_target 第三个参数可以修改 根据display 选项获取不同的数据，默认是 Target
+                        # display 筛选条件  Gene 是 Target
+                        # table_name ： 'Herb','TCM_symptom','MM_symptom','Gene','Disease'
+                        # dictAndList = get_relate_target(related_display_url,ingredientId,'TCM_symptom')
+                        dictAndList = get_relate_target(related_display_url,ingredientId)
+                        ingredientId2RelateData.setdefault(ingredientId,dictAndList)
             name2dataDict.setdefault(ingredientName,ingredientId2RelateData)
     # print_data(name2dataDict)
     export_excel(name2dataDict, exportExcelPath)
