@@ -5,15 +5,15 @@ import xlwt
 import xlrd
 
 # excel 保存路径 要保存成‘xls’ 格式 不要保存 ‘xlsx’
-exportExcelPath = "C:\\Users\\89834\\Desktop\\herb2.xls"
+exportExcelPath = "C:\\Users\\89834\\Desktop\\herb.xls"
 # 读取的 excel 地址
-sourceExcelPath = 'C:\\Users\\89834\\Desktop\\成分.xlsx'
+sourceExcelPath = 'C:\\Users\\89834\\Desktop\\成分1.xlsx'
 
 # 要查询的 名称
 ingredient_name_list =('"1,8-Cineole"','Betea-Cubebene')
 
 # 查询 ingredient 表头  MOL_id 是 Ingredient id
-ingredient_title = ('MOL_id','Molecule_name','Molecule_formula','Molecule_weight','OB_score','PubChem_id''CAS_id',)
+ingredient_title = ('MOL_id','Molecule_name','Molecule_formula','Molecule_weight','OB_score','PubChem_id''CAS_id')
 # 查询 ingredient url
 # data={"page_size":15,"page_num":1,'table_name':'Gene'}
 ingredient_url = 'http://www.symmap.org/search/'
@@ -46,6 +46,7 @@ table_name 可选值： 'Herb','TCM_symptom','MM_symptom','Gene','Disease'
 def get_relate_target(url, id, table_name='Gene'):
     data = {'rrid': id, 'table_name': table_name, 'filter': 0}
     response = requests.post(url, data)
+    print("抓取 ingredientId:",id)
     if response.status_code == 200:
         text = response.text
         jsonStr = json.loads(text)
@@ -65,8 +66,9 @@ def get_relate_target(url, id, table_name='Gene'):
             for field in field2title:
                 # relateDict.update(title=dataArr[i][title])
                 relateDict.setdefault(field2title[field],dataArr[i][field])
-                # print(title, "->",dataArr[i][title], end='\t\t\t')
+                print(field2title[field], ":",dataArr[i][field], end='\t\t')
             relateList.append(relateDict)
+            print()
         dataDict.setdefault('data',relateList)
         dataDict.setdefault('titleList',titleList)
         return dataDict
@@ -117,7 +119,7 @@ def export_excel(data, exportPath):
             rowNum = rowNum + 1
 
     workbook.save(exportPath)
-    print('导出成功')
+    print('导出成功，文件为：', exportPath)
 
 ''' 打印数据 测试用 '''
 def print_data(data):
@@ -159,6 +161,7 @@ if __name__ == '__main__':
         if ingredientName:
             ingredientId2RelateData = {}
             # 成分名称的id
+            print('开始抓取：',ingredientName,' 数据')
             ingredientIdList = get_ingredient_id(ingredient_url,ingredientName)
             if ingredientIdList:
                 # 关联成分的靶点信息
@@ -172,4 +175,5 @@ if __name__ == '__main__':
                         ingredientId2RelateData.setdefault(ingredientId,dictAndList)
             name2dataDict.setdefault(ingredientName,ingredientId2RelateData)
     # print_data(name2dataDict)
+    print('准备导出数据')
     export_excel(name2dataDict, exportExcelPath)
