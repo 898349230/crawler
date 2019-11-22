@@ -28,7 +28,7 @@ related_display_target_title = ('Gene_id','Gene_symbol','Chromosome','Gene_name'
 ''' 获取 ingredient id 集合 '''
 def get_ingredient_id(url,ingredient,title='MOL_id'):
     data = {"table_name": "Mol", "key": ingredient}
-    response = requests.post(url, data)
+    response = requests.post(url, data,timeout=5)
     if response.status_code == 200:
         text = response.text
         dataArr = json.loads(text)['data']  # type:list
@@ -152,6 +152,7 @@ def cellColourStyle(colourNum):
 
 if __name__ == '__main__':
     name2dataDict = {}
+    failNameList = []
     # 读取 excel 内的名称
     name_list = read_excel(sourceExcelPath)
     # 手动填写名称
@@ -162,18 +163,25 @@ if __name__ == '__main__':
             ingredientId2RelateData = {}
             # 成分名称的id
             print('开始抓取：',ingredientName,' 数据')
-            ingredientIdList = get_ingredient_id(ingredient_url,ingredientName)
-            if ingredientIdList:
-                # 关联成分的靶点信息
-                for ingredientId in ingredientIdList:
-                    if ingredientId:
-                        # get_relate_target 第三个参数可以修改 根据display 选项获取不同的数据，默认是 Target
-                        # display 筛选条件  Gene 是 Target
-                        # table_name ： 'Herb','TCM_symptom','MM_symptom','Gene','Disease'
-                        # dictAndList = get_relate_target(related_display_url,ingredientId,'TCM_symptom')
-                        dictAndList = get_relate_target(related_display_url,ingredientId)
-                        ingredientId2RelateData.setdefault(ingredientId,dictAndList)
-            name2dataDict.setdefault(ingredientName,ingredientId2RelateData)
+            try :
+                ingredientIdList = get_ingredient_id(ingredient_url,ingredientName)
+            except Exception as result:
+                print(ingredientName,' 获取数据失败')
+                failNameList.append(ingredientName)
+                continue
+            else:
+                if ingredientIdList:
+                    # 关联成分的靶点信息
+                    for ingredientId in ingredientIdList:
+                        if ingredientId:
+                            # get_relate_target 第三个参数可以修改 根据display 选项获取不同的数据，默认是 Target
+                            # display 筛选条件  Gene 是 Target
+                            # table_name ： 'Herb','TCM_symptom','MM_symptom','Gene','Disease'
+                            # dictAndList = get_relate_target(related_display_url,ingredientId,'TCM_symptom')
+                            dictAndList = get_relate_target(related_display_url,ingredientId)
+                            ingredientId2RelateData.setdefault(ingredientId,dictAndList)
+                name2dataDict.setdefault(ingredientName,ingredientId2RelateData)
+
     # print_data(name2dataDict)
     print('准备导出数据')
     export_excel(name2dataDict, exportExcelPath)
