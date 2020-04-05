@@ -4,31 +4,29 @@ import base64
 import json
 import pymysql
 import time
-
-# from elasticsearch5 import Elasticsearch
+from elasticsearch import Elasticsearch
+from elasticsearch import helpers
 
 # 获取音乐
 songs_url = "https://music.163.com/weapi/cloudsearch/get/web?csrf_token="  # post
-# comment_url = "https://music.163.com/weapi/v1/resource/comments/R_SO_4_411214279?csrf_token=" # post
 comment_url_base = "https://music.163.com/weapi/v1/resource/comments/R_SO_4_" # post
 
 # 输出文件名称
 out_put_file = 'wangyiyun.txt'
 hot_comment_out_put_file = 'wangyiyun_hot.txt'
 out_put_error_file = 'error.txt'
-db = pymysql.connect(host="aliyun.com", user="root", passwd="123456", db="db01", port=3300, charset='utf8')
+
+# mysql 链接   charset 设置为 utf8mb4 不要设置为 utf8 有些评论带表情，utf8 插入数据库会有warning
+db = pymysql.connect(host="", user="", passwd="", db="db01", port=3306, charset='utf8mb4')
+
+# es 链接
+es = Elasticsearch(host='')
 
 headers = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.101'
                   ' Safari/537.36'
 }
 
-# first_param = "{rid:\"\", offset:\"0\", total:\"true\", limit:\"20\", csrf_token:\"\"}"
-second_param = "010001"
-third_param = "00e0b509f6259df8642dbc35662901477df22677ec152b5ff68ace615bb7b725152b3ab17a876aea8a5aa76d2e417629ec4ee341f56135fccf695280104e0312ecbda92557c93870114af6c9d05c4f7f0c3685b7a46bee255932575cce10b424d813cfe4875d3e82047b97ddef52741d546b8e289dc6935b3ece0462db0a22b8e7"
-forth_param = b"0CoJUm6Qyw8W8jud"
-
-# comment_list = []
 page_size = 100
 
 class Comment:
@@ -57,6 +55,7 @@ def get_comments(song_id, song_name):
         "params": param,
         "encSecKey":encSecKey
     }
+    # 每个歌曲的获取评论的 url
     comment_url = comment_url_base + str(song_id) + "?csrf_token="
     try:
         resp = requests.post(url=comment_url, data=data, headers=headers, timeout=10)
@@ -72,17 +71,21 @@ def get_comments(song_id, song_name):
         hot_comment_list = []
         for hot_comment in hot_comment_list_json:
             # com = {"content":comment['content'],"likedCount":comment['likedCount'],"songId":song_id,"nickname":comment['user']['nickname']}
+            # 拼装对象
             com_obj = Comment(hot_comment, song_id, song_name)
+            # 写入 本地文件
             hot_comment_write_to_file(com_obj.__str__())
             hot_comment_list.append(com_obj)
         if len(hot_comment_list) > 0:
+            # 插入 mysql
             hot_batch_insert_mysql(hot_comment_list)
 
         print(time.strftime('%Y.%m.%d %H:%M:%S ', time.localtime(time.time())) ," 抓取 %s 的评论，一共 %d 条" % (song_name, total))
         flag = 0
+        # 获取评论
         # for page in reversedrsed(rangege(int(total/page_size+1))):
         for page in range(int(total/page_size+1)):
-            # 50 页 睡眠
+            # 50 页 睡眠， 避免封 ip
             print("爬取 %s  第 %d 页"  % (song_name, page+1))
             if page % 10 == 0 and page > 50:
                 print("睡眠中 %s %d " % (song_name, page+1))
@@ -136,7 +139,7 @@ def get_page_comment_list(song_id, song_name, page_num, pageSize):
             comment_list.append(com_obj)
         return comment_list
 
-# 获取加密参数
+# 获取分页参数获取加密参数
 def get_params(pageNum, pageSize = 20):
     if pageNum == 0:
         first_param = '{rid:"", offset:"0", total:"true", limit:' + str(pageSize) + ', csrf_token:""}'
@@ -146,16 +149,18 @@ def get_params(pageNum, pageSize = 20):
         first_param = '{rid:"", offset:"%s", total:"%s", limit:' + str(pageSize) + ', csrf_token:""}'
         first_param = first_param % (offset, 'flase')
         print("first_param %s, pageNum %s, pageSize %s" % (first_param, pageNum, pageSize))
+    # 这里是转为 二进制
     iv = b"0102030405060708"
-    first_key = forth_param
+    # 这里是转为 二进制
+    first_key = b"0CoJUm6Qyw8W8jud"
     second_key = 16 * 'F'
     h_encText = AES_encrypt(first_param, first_key, iv)
+    # h_encText 是二进制， AES_encrypt() 第一参数需要 str ，所以把 h_encText 转为 str
     h_encText = AES_encrypt(h_encText.decode('utf-8'), bytes(second_key, encoding = "utf8")+b"", iv)
     return h_encText
 
 def AES_encrypt(text, key, iv):
     encryptor = AES.new(key, AES.MODE_CBC, iv)
-
     pad = 16 - len(text) % 16
     text = text + pad * chr(pad)
     encrypt_text = encryptor.encrypt(bytes(text, encoding = "utf8")+b"")
@@ -168,12 +173,18 @@ def get_encSecKey():
 
 # 获取歌曲id及歌曲名称
 def get_song_id():
+
     data = {
         # 许嵩的
-        "params": "MJR/aS9kTlGVKs6FwVBD/IiNG039QlMjxp441DiaQfp14WcX8LFxUA2QY6uIJ5btY8mOX4W1sLARK+ZKQIofZjB2vDyBEnci/2eX61zysr+Gdjd2Ej1hwL0jiNui1jyuy+ewzoMuFBzGi21JHonnuc+Ok/SzBI4Sfj85bT1F4FvjgX7kmTrbF0p7dBubUVJZII7Naj7qAG55V0k3TGtnDJogHpfSH0vbxakRPKFYqs3wUqU3lgWBlA0CAnyFwTInX5hNQaiVs7CKhqaVulsGiA==",
-        "encSecKey": "d591c1efe8e8c29eb57ced78ca690246616a392a0c0d0419f6703117315d5d57fa0179d387012ce0b3382c5afe5c5a84fdd48ab36d079e8d2c71e9c21a831aefa5b5a2ae32e4bc13ad3f5ff5dc2e4207d5a5cf319000b10f559b1041bd3b745c3297244d610ffcf83ebc16745fa178ac39670bd5c60e86290847a2fcc05cebd6"
+        "params": "KcgvTSDue1viaYxe07Zd+TqT3aaJZ2CfQ0FIOySNGI2ouQnVRHTA2XN8v8+ydxOadocWof/DGCMpXNSAKEHMf0Y/HJlyG2soJ7WaefhCkr8mm0nSpX9nQjIVK9iIkpQ14Q2UXQht5JUmgKLlYuJJ2TdVmhaBtbl+K12v0JXqzl+l0DRQWovH2MvkrdhAhCWty3cRuSbu/dlbGU140HLTO5/pT7ZeTxcPe8/jB/txC/B1QnafGnAiFerXYHdn4N61benQ8TeSQNcFOgfUypNgoaiyh8nJy5OzvE5XYwtkh/7JMRbMIEB6vpp4FYnfNEBi",
+        "encSecKey": "95a9dc4f10032b4db1a5e40bc78e8c5009130370cfa2412a3203aac932ebca7de3958d3a682be22aa521ab4408ed5d9e2d502dff9b5e2631386ff1ef161dff5e43e1fef1e356eea17dfaf4c444de0119504b383e0113a7b2b65b11d260b1f6b5a20df4394e04eac3ff75c9092f05f82b2e0ab8abb7c9156e0ccb5c9c5e1869b9"
     }
 
+    # songs_url = "https://music.163.com/weapi/cloudsearch/get/web?csrf_token="
+    # headers = {
+    #     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.101'
+    #                   ' Safari/537.36'
+    # }
     resp = requests.post(url=songs_url, data=data, headers=headers)
     # content = resp.content.decode()
     resp_json= resp.json()
@@ -220,7 +231,7 @@ def insert_mysql(comment):
         print(time.strftime('%Y.%m.%d %H:%M:%S ', time.localtime(time.time())) ," insert error sql: %s" % sql, result)
         write_error_to_file(" insert error sql: %s result %s" % (sql, result))
 
-
+# 批量插入 mysql
 def batch_insert_mysql(comment_list):
     sql = "INSERT IGNORE INTO `yun_comment` (`id`, `song_id` ,`song_name`,`content`, `nick_name`, " \
           "`liked_count`, `parent_comment_id`, `user_id`,`comment_date` ,`time`, `create_date`) VALUES "
@@ -241,6 +252,7 @@ def batch_insert_mysql(comment_list):
         write_error_to_file(" insert error sql: %s, result %s" %(sql, result))
         return 1
 
+# 热评批量插入mysql
 def hot_batch_insert_mysql(comment_list):
     sql = "INSERT IGNORE INTO `yun_comment_hot` (`id`, `song_id` ,`song_name`,`content`, `nick_name`, " \
           "`liked_count`, `parent_comment_id`, `user_id`, `comment_date`,`time`, `create_date`) VALUES "
@@ -263,6 +275,7 @@ def hot_batch_insert_mysql(comment_list):
         write_error_to_file(" insert error sql: %s, result %s" %(sql, result))
         return 1
 
+# 转义字符
 def transferContent(content):
     if content is None:
         return None
@@ -284,6 +297,97 @@ def formate_time_to_date(timeStamp):
     otherStyleTime = time.strftime("%Y-%m-%d %H:%M:%S", timeArray)
     return otherStyleTime
 
+def test_es():
+
+    # 插入1条数据
+    # body = {
+    #     'id':2,
+    #     'name':'test_02'
+    # }
+    # res = es.index(index='test_01',doc_type = 'json',id=2,body=body)
+    # print(res)
+
+    # 获取数据
+    # getres = es.get(index='test_01',doc_type = 'json',id=12)
+    getres = es.get(index='yun_music',doc_type = 'comment',id='_3218100629')
+    count = es.count(index='yun_music',doc_type = 'comment')
+    print(getres)
+    print(count)
+
+    # body = {
+    #     "query": {
+    #         "match_all": {
+    #         }
+    #     }
+    # }
+    # res = es.search(index='test_01',doc_type = 'json', body=body)
+    # print(res)
+
+    # 批量插入
+    # action = []
+    # action1 = {
+    #     '_op_type': 'index',  # #操作 index update create delete
+    #     '_index': 'test_01',
+    #     '_type': 'json',
+    #     '_source': {
+    #         'id': 11,
+    #         'name': 'test_11'
+    #     }
+    # }
+    # action2 = {
+    #     '_op_type': 'index',  # #操作 index update create delete
+    #     '_index': 'test_01',
+    #     '_type': 'json',
+    #     '_id': 12,
+    #     '_source': {
+    #         'id': 12,
+    #         'name': 'test_12'
+    #     }
+    # }
+    # action.append(action1)
+    # action.append(action2)
+    # bulk_res = helpers.bulk(client=es, actions=action)
+    # print(bulk_res)
+
+def db_to_es():
+    sql_count = "select count(*) from yun_comment"
+    cursor = db.cursor()
+    cursor.execute(sql_count)
+    count = cursor.fetchone()[0]
+
+    for page in range(int(count/page_size)+1):
+        start = page_size * page
+        sql = 'select * from yun_comment limit %d, %d ' %(start, page_size)
+        # sql = 'select * from yun_comment limit 0,1 '
+        cursor.execute(sql)
+        comment_tuple = cursor.fetchall()
+        print('第 %d 页数据, 当前组第一首歌曲 %s, %d' % ((page + 1), comment_tuple[0][2], comment_tuple[0][0]))
+        action_list = []
+        for comment in comment_tuple:
+            action = {
+                '_op_type': 'index',  # #操作 index update create delete
+                '_index': 'yun_music',
+                '_type': 'comment',
+                '_id':'_'+str(comment[0]),
+                '_source': {
+                    'comment_id':comment[0],
+                    'song_id':comment[1],
+                    'song_name':comment[2],
+                    'content':comment[3],
+                    'nick_name':comment[4],
+                    'liked_count':comment[5],
+                    'comment_date':comment[6],
+                    'user_id':comment[8],
+                }
+            }
+            action_list.append(action)
+        try :
+            resp = helpers.bulk(client=es, actions=action_list)
+        except Exception as ex:
+            print('error : ', ex)
+        else:
+            print('resp : ', resp)
+
 if __name__ == '__main__':
     t1 = time.time()
     print("开始时间： ", time.strftime('%Y.%m.%d %H:%M:%S ', time.localtime(time.time())))
@@ -293,7 +397,16 @@ if __name__ == '__main__':
             get_comments(id, name)
             print(id, name)
     print("结束时间： ", time.strftime('%Y.%m.%d %H:%M:%S ', time.localtime(time.time())))
-    print("耗时 %d", time.time() - t1)
+    print("耗时 %d" % (time.time() - t1))
 
     # for page in reversed(range(10)):
     #     print(page)
+
+    # test_es()
+
+    # mysql  评论数据数据导入 es
+    # t1 = time.time()
+    # print("开始时间： ", time.strftime('%Y.%m.%d %H:%M:%S ', time.localtime(time.time())))
+    # db_to_es()
+    # print("结束时间： ", time.strftime('%Y.%m.%d %H:%M:%S ', time.localtime(time.time())))
+    # print("耗时 %d" % (time.time() - t1))
