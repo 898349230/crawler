@@ -17,10 +17,10 @@ hot_comment_out_put_file = 'wangyiyun_hot.txt'
 out_put_error_file = 'error.txt'
 
 # mysql 链接  charset 设置为 utf8mb4 不要设置为 utf8 有些评论带表情，utf8 插入数据库会有warning
-db = pymysql.connect(host="39.105.30.225", user="root", passwd="123456", db="db01", port=3309, charset='utf8mb4')
+db = pymysql.connect(host="", user="root", passwd="", db="", port=3306, charset='utf8mb4')
 
 # es 链接
-es = Elasticsearch(host='39.105.30.225')
+es = Elasticsearch(host='')
 
 headers = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/53.0.2785.101'
